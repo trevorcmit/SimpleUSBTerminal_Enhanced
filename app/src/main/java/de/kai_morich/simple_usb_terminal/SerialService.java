@@ -102,7 +102,8 @@ public class SerialService extends Service implements SerialListener {
         socket.write(data);
     }
 
-    public void attach(SerialListener listener) {
+    public void attach(SerialListener listener)
+    {
         if(Looper.getMainLooper().getThread() != Thread.currentThread())
             throw new IllegalArgumentException("not in main thread");
         initNotification();
