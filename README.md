@@ -1,4 +1,4 @@
-# SimpleUsbTerminal
+# Simple USB Terminal Enhanced
 
 This repository is derivative of SimpleUSBTerminal developed by kai-morich.
 

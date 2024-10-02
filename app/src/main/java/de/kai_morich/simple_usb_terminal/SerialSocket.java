@@ -13,10 +13,23 @@ import androidx.core.content.ContextCompat;
 import com.hoho.android.usbserial.driver.UsbSerialPort;
 import com.hoho.android.usbserial.util.SerialInputOutputManager;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.security.InvalidParameterException;
 
-public class SerialSocket implements SerialInputOutputManager.Listener {
+import com.ftdi.j2xx.D2xxManager;
+import com.ftdi.j2xx.FT_Device;
+
+
+public class SerialSocket implements SerialInputOutputManager.Listener
+{
+    // ADDITIONS -----------------------------
+    private File logFile;
+    FT_Device ftDev = null;
+    D2xxManager ftdid2xx;
+    public boolean bReadThreadGoing = false;
+    // ---------------------------------------
 
     private static final int WRITE_WAIT_MILLIS = 200; // 0 blocked infinitely on unprogrammed arduino
     private final static String TAG = SerialSocket.class.getSimpleName();
@@ -29,12 +42,14 @@ public class SerialSocket implements SerialInputOutputManager.Listener {
     private UsbSerialPort serialPort;
     private SerialInputOutputManager ioManager;
 
-    SerialSocket(Context context, UsbDeviceConnection connection, UsbSerialPort serialPort) {
+    SerialSocket(Context context, UsbDeviceConnection connection, UsbSerialPort serialPort, File logFile)
+    {
         if(context instanceof Activity)
             throw new InvalidParameterException("expected non UI context");
         this.context = context;
         this.connection = connection;
         this.serialPort = serialPort;
+        this.logFile = logFile;
         disconnectBroadcastReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
@@ -47,20 +62,30 @@ public class SerialSocket implements SerialInputOutputManager.Listener {
 
     String getName() { return serialPort.getDriver().getClass().getSimpleName().replace("SerialDriver",""); }
 
-    void connect(SerialListener listener) throws IOException {
+    void connect(SerialListener listener) throws IOException
+    {
         this.listener = listener;
         ContextCompat.registerReceiver(context, disconnectBroadcastReceiver, new IntentFilter(Constants.INTENT_ACTION_DISCONNECT), ContextCompat.RECEIVER_NOT_EXPORTED);
-	try {
-	    serialPort.setDTR(true); // for arduino, ...
-	    serialPort.setRTS(true);
-	} catch (UnsupportedOperationException e) {
-	    Log.d(TAG, "Failed to set initial DTR/RTS", e);
-	}
+        try {
+            serialPort.setDTR(true); // for arduino, ...
+            serialPort.setRTS(true);
+        } catch (UnsupportedOperationException e) {
+            Log.d(TAG, "Failed to set initial DTR/RTS", e);
+        }
         ioManager = new SerialInputOutputManager(serialPort, this);
         ioManager.start();
+
+        // ------------------------------------------
+        // if (false == bReadThreadGoing)
+		// {
+		// 	read_thread = new readThread(handler);
+		// 	read_thread.start();
+		// 	bReadThreadGoing = true;
+		// }
     }
 
-    void disconnect() {
+    void disconnect()
+    {
         listener = null; // ignore remaining data and errors
         if (ioManager != null) {
             ioManager.setListener(null);
@@ -89,20 +114,44 @@ public class SerialSocket implements SerialInputOutputManager.Listener {
         }
     }
 
-    void write(byte[] data) throws IOException {
+    void write(byte[] data) throws IOException
+    {
         if(serialPort == null)
             throw new IOException("not connected");
         serialPort.write(data, WRITE_WAIT_MILLIS);
     }
 
     @Override
-    public void onNewData(byte[] data) {
+    public void onNewData(byte[] data)
+    {
         if(listener != null)
+        {
             listener.onSerialRead(data);
+        }
+
+        logToFile(data);
+    }
+
+    // Method to log data to the file
+    private void logToFile(byte[] data)
+    {
+        if (logFile == null)
+            return;
+
+        try (FileOutputStream fos = new FileOutputStream(logFile, true))
+        {
+            fos.write(data);
+            fos.write("\n".getBytes()); // optional: write a newline after each data block
+        }
+        catch (IOException e)
+        {
+            Log.e(TAG, "Error writing to log file", e);
+        }
     }
 
     @Override
-    public void onRunError(Exception e) {
+    public void onRunError(Exception e)
+    {
         if (listener != null)
             listener.onSerialIoError(e);
     }

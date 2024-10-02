@@ -45,11 +45,16 @@ import com.hoho.android.usbserial.driver.UsbSerialPort;
 import com.hoho.android.usbserial.driver.UsbSerialProber;
 import com.hoho.android.usbserial.util.XonXoffFilter;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.EnumSet;
+
 
 public class TerminalFragment extends Fragment implements ServiceConnection, SerialListener {
 
@@ -322,7 +327,14 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             } catch (UnsupportedOperationException e) {
                 status("Setting serial parameters failed: " + e.getMessage());
             }
-            SerialSocket socket = new SerialSocket(getActivity().getApplicationContext(), usbConnection, usbSerialPort);
+
+        //-----------------------------------------------------------------------------------------
+            SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
+            String currentDateAndTime = sdf.format(new Date());
+            File logFile = new File(getActivity().getExternalFilesDir(null), "log_" + currentDateAndTime + ".txt");
+            SerialSocket socket = new SerialSocket(getActivity().getApplicationContext(), usbConnection, usbSerialPort, logFile);
+        //-----------------------------------------------------------------------------------------
+
             service.connect(socket);
             // usb connect is not asynchronous. connect-success and connect-error are returned immediately from socket.connect
             // for consistency to bluetooth/bluetooth-LE app use same SerialListener and SerialService classes
@@ -392,34 +404,36 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
         updateSendBtn(controlLines.sendAllowed ? SendButtonState.Idle : SendButtonState.Disabled);
     }
 
-    private void receive(ArrayDeque<byte[]> datas) {
-        SpannableStringBuilder spn = new SpannableStringBuilder();
+    private void receive(ArrayDeque<byte[]> datas)
+    {
+        // SpannableStringBuilder spn = new SpannableStringBuilder();
         for (byte[] data : datas) {
-            if (flowControlFilter != null)
-                data = flowControlFilter.filter(data);
-            if (hexEnabled) {
-                spn.append(TextUtil.toHexString(data)).append('\n');
-            } else {
-                String msg = new String(data);
-                if (newline.equals(TextUtil.newline_crlf) && msg.length() > 0) {
-                    // don't show CR as ^M if directly before LF
-                    msg = msg.replace(TextUtil.newline_crlf, TextUtil.newline_lf);
-                    // special handling if CR and LF come in separate fragments
-                    if (pendingNewline && msg.charAt(0) == '\n') {
-                        if(spn.length() >= 2) {
-                            spn.delete(spn.length() - 2, spn.length());
-                        } else {
-                            Editable edt = receiveText.getEditableText();
-                            if (edt != null && edt.length() >= 2)
-                                edt.delete(edt.length() - 2, edt.length());
-                        }
-                    }
-                    pendingNewline = msg.charAt(msg.length() - 1) == '\r';
-                }
-                spn.append(TextUtil.toCaretString(msg, newline.length() != 0));
-            }
+            // if (flowControlFilter != null)
+            //     data = flowControlFilter.filter(data);
+            // if (hexEnabled) {
+            //     spn.append(TextUtil.toHexString(data)).append('\n');
+            // } else {
+            //     String msg = new String(data);
+            //     if (newline.equals(TextUtil.newline_crlf) && msg.length() > 0) {
+            //         // don't show CR as ^M if directly before LF
+            //         msg = msg.replace(TextUtil.newline_crlf, TextUtil.newline_lf);
+            //         // special handling if CR and LF come in separate fragments
+            //         if (pendingNewline && msg.charAt(0) == '\n') {
+            //             if(spn.length() >= 2) {
+            //                 spn.delete(spn.length() - 2, spn.length());
+            //             } else {
+            //                 Editable edt = receiveText.getEditableText();
+            //                 if (edt != null && edt.length() >= 2)
+            //                     edt.delete(edt.length() - 2, edt.length());
+            //             }
+            //         }
+            //         pendingNewline = msg.charAt(msg.length() - 1) == '\r';
+            //     }
+            //     spn.append(TextUtil.toCaretString(msg, newline.length() != 0));
+            // }
+            receiveText.append(new String(data));
         }
-        receiveText.append(spn);
+        // receiveText.append(spn);
     }
 
     void status(String str) {
@@ -487,7 +501,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
     }
 
     class ControlLines {
-        private static final int refreshInterval = 200; // msec
+        // private static final int refreshInterval = 200; // msec
+        // private static final int refreshInterval = 1;
 
         private final Runnable runnable;
 
@@ -526,7 +541,8 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             }
         }
 
-        void selectFlowControl() {
+        void selectFlowControl()
+        {
             EnumSet<UsbSerialPort.FlowControl> sfc = usbSerialPort.getSupportedFlowControl();
             UsbSerialPort.FlowControl fc = usbSerialPort.getFlowControl();
             ArrayList<String> names = new ArrayList<>();
@@ -534,6 +550,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
             int pos = 0;
             names.add("<none>");
             values.add(UsbSerialPort.FlowControl.NONE);
+
             if (sfc.contains(UsbSerialPort.FlowControl.RTS_CTS)) {
                 names.add("RTS/CTS control lines");
                 values.add(UsbSerialPort.FlowControl.RTS_CTS);
@@ -554,6 +571,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                 values.add(UsbSerialPort.FlowControl.XON_XOFF_INLINE);
                 if (fc == UsbSerialPort.FlowControl.XON_XOFF_INLINE) pos = names.size() - 1;
             }
+
             AlertDialog.Builder builder = new AlertDialog.Builder(getActivity());
             builder.setTitle("Flow Control");
             builder.setSingleChoiceItems(names.toArray(new CharSequence[0]), pos, (dialog, which) -> {
@@ -648,7 +666,7 @@ public class TerminalFragment extends Fragment implements ServiceConnection, Ser
                     }
                     updateSendBtn(sendAllowed ? SendButtonState.Idle : SendButtonState.Disabled);
                 }
-                mainLooper.postDelayed(runnable, refreshInterval);
+                // mainLooper.postDelayed(runnable, refreshInterval);
             } catch (IOException e) {
                 status("getControlLines() failed: " + e.getMessage() + " -> stopped control line refresh");
             }
